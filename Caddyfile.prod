@@ -1,0 +1,102 @@
+# Production edge proxy for Slotify on a single Hetzner box.
+#
+# Topology (YAKOSLOTS_DOMAIN from env, e.g. example.com):
+#   https://{$YAKOSLOTS_DOMAIN}              → marketing (web-client) + /api/* → php
+#   https://api.{$YAKOSLOTS_DOMAIN}          → JSON API (php)
+#   https://admin.{$YAKOSLOTS_DOMAIN}        → platform admin
+#   https://{slug}.{$YAKOSLOTS_DOMAIN}       → tenant app + /api/* → php (on-demand TLS)
+#
+# Marketing apex is skipped for the admin listener:
+#   http://<SERVER_IP>:8080             → platform admin (+ /api/* → php)
+#   http://{$YAKOSLOTS_DOMAIN}:8080          → platform admin (+ /api/* → php)
+#   http(s)://<SERVER_IP>:80 | :443     → default tenant app (+ /api/* → php)
+#
+# Wildcard certificates need DNS-01 (see docs/deploy.md). Until that is wired,
+# Caddy issues per-host certificates via on-demand TLS for tenant subdomains.
+# Bare-IP HTTPS is not covered by Let’s Encrypt HTTP-01; prefer http://IP:80
+# or terminate TLS with a custom cert if needed.
+{
+	email {$ACME_EMAIL}
+	admin off
+
+	# Stock Caddy 2.8+ removed on_demand_tls interval/burst and requires an ask
+	# permission check. Health is a temporary allow-all until a slug ask exists
+	# (see docs/deploy.md). Tighten before broad public wildcard use.
+	on_demand_tls {
+		ask http://php:8000/api/health
+	}
+}
+
+{$YAKOSLOTS_DOMAIN} {
+	encode zstd gzip
+
+	@api path /api/*
+	handle @api {
+		reverse_proxy php:8000
+	}
+
+	handle {
+		reverse_proxy web-client:3000
+	}
+}
+
+api.{$YAKOSLOTS_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy php:8000
+}
+
+admin.{$YAKOSLOTS_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy platform-admin:3001
+}
+
+*.{$YAKOSLOTS_DOMAIN} {
+	tls {
+		on_demand
+	}
+	encode zstd gzip
+
+	@api path /api/*
+	handle @api {
+		reverse_proxy php:8000
+	}
+
+	handle {
+		reverse_proxy tenant:3002
+	}
+}
+
+# Platform / global admin on :8080.
+# An explicit apex address is required: `{$YAKOSLOTS_DOMAIN}` above is only :443/:80,
+# and that more-specific host would otherwise claim the name without listening
+# on 8080. The socket catch-all still serves Host=<IP> (and any other host
+# with no site block). Stock Caddy — no host_regexp / plugin matchers.
+http://{$YAKOSLOTS_DOMAIN}:8080, :8080 {
+	encode zstd gzip
+
+	@api path /api/*
+	handle @api {
+		reverse_proxy php:8000
+	}
+
+	handle {
+		reverse_proxy platform-admin:3001
+	}
+}
+
+# Default tenant when opening the box by IP on :80 / :443.
+# Domain site blocks above win for YAKOSLOTS_DOMAIN / admin.* / {slug}.*;
+# leftover Host=IP (or empty) traffic lands here — not the marketing apex.
+# Socket address only (stock Caddy; no host_regexp).
+:80, :443 {
+	encode zstd gzip
+
+	@api path /api/*
+	handle @api {
+		reverse_proxy php:8000
+	}
+
+	handle {
+		reverse_proxy tenant:3002
+	}
+}

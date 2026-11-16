@@ -1,0 +1,2 @@
+# Optional second app site block is appended at runtime by caddy-entrypoint.sh
+# when SECONDARY_APP_DOMAIN is set in host-gateway/.env.

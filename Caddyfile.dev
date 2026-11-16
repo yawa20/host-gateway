@@ -1,0 +1,77 @@
+{
+	auto_https off
+	admin off
+}
+
+# Host-based local topology on :8080 (browsers resolve *.localhost → 127.0.0.1).
+#   http://slotify.localhost:8080/           → presentation + /api/*
+#   http://api.slotify.localhost:8080/       → JSON API
+#   http://admin.slotify.localhost:8080/     → platform admin
+#   http://{slug}.slotify.localhost:8080/    → tenant app
+#
+# Raw IP (no hostname slug) — mirrors production IP access (stock Caddy only;
+# no host_regexp / extra matcher modules):
+#   http://127.0.0.1:8080/  → platform admin + /api/*
+#   http://127.0.0.1:80/    → default tenant + /api/*
+#
+# Named host matchers run first; leftover traffic on the socket (bare IP Host)
+# falls through to the final handle — same idea as Caddyfile.prod :8080 / :80.
+
+:8080 {
+	@apex host slotify.localhost
+	handle @apex {
+		@site path /site/*
+		handle @site {
+			root * /app/public
+			file_server
+		}
+		handle {
+			reverse_proxy php:8000
+		}
+	}
+
+	@api host api.slotify.localhost
+	handle @api {
+		reverse_proxy php:8000
+	}
+
+	@admin host admin.slotify.localhost
+	handle @admin {
+		reverse_proxy platform-admin:3001
+	}
+
+	@tenant host *.slotify.localhost
+	handle @tenant {
+		@tenantApi path /api/*
+		handle @tenantApi {
+			reverse_proxy php:8000
+		}
+		handle {
+			reverse_proxy tenant:3002
+		}
+	}
+
+	# Bare IP (or any Host that is not *.slotify.localhost) → platform admin.
+	handle {
+		@ipApi path /api/*
+		handle @ipApi {
+			reverse_proxy php:8000
+		}
+		handle {
+			reverse_proxy platform-admin:3001
+		}
+	}
+}
+
+# Default tenant on :80 — production parity for http://<IP>/.
+# Local named hosts stay on :8080; this listener is for raw-IP access only.
+:80 {
+	@api path /api/*
+	handle @api {
+		reverse_proxy php:8000
+	}
+
+	handle {
+		reverse_proxy tenant:3002
+	}
+}

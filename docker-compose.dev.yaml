@@ -1,0 +1,22 @@
+# Local dev gateway (HTTP only). Start the Slotify app stack first, then:
+#   ./scripts/up.sh dev
+
+name: slotify-gateway-dev
+
+services:
+  gateway:
+    image: caddy:2.9-alpine
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "80:80"
+    volumes:
+      - ./Caddyfile.dev:/etc/caddy/Caddyfile:ro
+      - ${SLOTIFY_REPO_ROOT:?set SLOTIFY_REPO_ROOT in host-gateway/.env}:/app:ro
+    networks:
+      - slotify
+
+networks:
+  slotify:
+    external: true
+    name: ${SLOTIFY_NETWORK_NAME:-slotify}

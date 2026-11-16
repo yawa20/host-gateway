@@ -1,0 +1,42 @@
+# Edge gateway (Caddy) — separate Compose project from the Slotify app stack.
+#
+# Joins the shared Docker network `slotify` (external) created by docker-compose.prod.yaml.
+#
+# On the VPS:
+#   cd /opt/host-gateway   # or /opt/slotify/host-gateway
+#   cp .env.example .env && edit
+#   ./scripts/up.sh
+
+name: slotify-gateway
+
+services:
+  gateway:
+    image: caddy:2.9-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+    environment:
+      YAKOSLOTS_DOMAIN: ${YAKOSLOTS_DOMAIN:-${BASE_DOMAIN}}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in host-gateway/.env}
+      SECONDARY_APP_DOMAIN: ${SECONDARY_APP_DOMAIN:-}
+      SECONDARY_APP_UPSTREAM: ${SECONDARY_APP_UPSTREAM:-other-app:3000}
+    volumes:
+      - ./Caddyfile.prod:/etc/caddy/Caddyfile.base:ro
+      - ./Caddyfile.secondary.fragment:/etc/caddy/Caddyfile.secondary.fragment:ro
+      - ./caddy-entrypoint.sh:/usr/local/bin/caddy-entrypoint.sh:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    entrypoint: ["/bin/sh", "/usr/local/bin/caddy-entrypoint.sh"]
+    networks:
+      - slotify
+
+networks:
+  slotify:
+    external: true
+    name: ${SLOTIFY_NETWORK_NAME:-slotify}
+
+volumes:
+  caddy_data:
+  caddy_config:
