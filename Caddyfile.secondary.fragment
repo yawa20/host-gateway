@@ -1,2 +1,4 @@
-# Optional second app site block is appended at runtime by caddy-entrypoint.sh
-# when SECONDARY_APP_DOMAIN is set in host-gateway/.env.
+# Second-app site blocks are appended at runtime by caddy-entrypoint.sh
+# when SECONDARY_APP_DOMAIN is set: the apex and *.{domain} share one upstream.
+# Address is SECONDARY_APP_UPSTREAM, or HOST:PORT with default port 3030.
+# YAKOSLOTS routing stays in Caddyfile.prod.

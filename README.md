@@ -1,7 +1,8 @@
 # Host gateway (Caddy)
 
 Shared edge reverse proxy for Slotify (and optional second apps) on a single VPS.  
-This directory is its **own Compose project** — not started by `deploy/deploy.sh`.
+This directory is its **own Compose project** — not started by `deploy/deploy.sh`.  
+Full specification: [`project.md`](project.md).
 
 ## Layout
 
@@ -9,7 +10,8 @@ This directory is its **own Compose project** — not started by `deploy/deploy.
 |------|---------|
 | `docker-compose.yaml` | Production Caddy (`80` / `443` / `8080`) |
 | `docker-compose.dev.yaml` | Local dev HTTP gateway |
-| `Caddyfile.prod` | Production routing (`YAKOSLOTS_DOMAIN`) |
+| `Caddyfile.prod` | Production routing (`YAKOSLOTS_DOMAIN`); not edited for a second app |
+| `project.md` | Gateway specification |
 | `Caddyfile.dev` | Local `*.slotify.localhost:8080` routing |
 | `.env` | Gateway-only secrets (copy from `.env.example`) |
 | `scripts/up.sh` / `down.sh` | Start / stop |
@@ -86,4 +88,19 @@ Without Docker: [`scripts/local-gateway.mjs`](../scripts/local-gateway.mjs).
 
 ## Secondary application
 
-Set `SECONDARY_APP_DOMAIN` and `SECONDARY_APP_UPSTREAM` in `.env`. The upstream container must join network `slotify`.# host-gateway
+A second app has its own Compose file and joins the existing Docker network `slotify` (`external: true`, `name: slotify`). It does not change YAKOSLOTS routes in `Caddyfile.prod`.
+
+When `SECONDARY_APP_DOMAIN` is set, `caddy-entrypoint.sh` appends two site blocks to the same upstream:
+
+- `{SECONDARY_APP_DOMAIN}` — ordinary ACME for the apex
+- `*.{SECONDARY_APP_DOMAIN}` — TLS `on_demand` (same pattern as YAKOSLOTS tenant subdomains)
+
+Upstream address: `SECONDARY_APP_UPSTREAM` (`host:port`) when that variable is set; otherwise `SECONDARY_APP_UPSTREAM_HOST`:`SECONDARY_APP_UPSTREAM_PORT` (port default **3030**).
+
+```env
+SECONDARY_APP_DOMAIN=other.example.com
+SECONDARY_APP_UPSTREAM_HOST=other-app
+SECONDARY_APP_UPSTREAM_PORT=3030
+```
+
+The service must listen on `0.0.0.0:<port>` inside its container. Point DNS A/AAAA for the apex and `*.{apex}` at this VPS, then `./scripts/up.sh`.

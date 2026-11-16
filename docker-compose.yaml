@@ -21,7 +21,10 @@ services:
       YAKOSLOTS_DOMAIN: ${YAKOSLOTS_DOMAIN:-${BASE_DOMAIN}}
       ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in host-gateway/.env}
       SECONDARY_APP_DOMAIN: ${SECONDARY_APP_DOMAIN:-}
-      SECONDARY_APP_UPSTREAM: ${SECONDARY_APP_UPSTREAM:-other-app:3000}
+      SECONDARY_APP_UPSTREAM_HOST: ${SECONDARY_APP_UPSTREAM_HOST:-}
+      SECONDARY_APP_UPSTREAM_PORT: ${SECONDARY_APP_UPSTREAM_PORT:-3030}
+      # Full host:port. When set, the entrypoint ignores HOST + PORT.
+      SECONDARY_APP_UPSTREAM: ${SECONDARY_APP_UPSTREAM:-}
     volumes:
       - ./Caddyfile.prod:/etc/caddy/Caddyfile.base:ro
       - ./Caddyfile.secondary.fragment:/etc/caddy/Caddyfile.secondary.fragment:ro
