@@ -31,9 +31,25 @@ services:
       - ./caddy-entrypoint.sh:/usr/local/bin/caddy-entrypoint.sh:ro
       - caddy_data:/data
       - caddy_config:/config
+      # Unix socket written by deploy-hooks-loopback. Not the host's 127.0.0.1.
+      - deploy_hooks_proxy:/run/deploy-hooks
     entrypoint: ["/bin/sh", "/usr/local/bin/caddy-entrypoint.sh"]
     networks:
       - slotify
+
+  # Byte pipe from the socket above to the webhook listener on the VPS
+  # loopback. host network is required: 127.0.0.1 inside `gateway` is the
+  # container, and a bridge address cannot connect to a socket bound only
+  # on the host's 127.0.0.1. This service does not publish a TCP port.
+  deploy-hooks-loopback:
+    image: alpine/socat:1.8.1.3@sha256:71131702f671a88b3808a70b7330f9679cd9b9933adcafadc191508edfe55bba
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - deploy_hooks_proxy:/run/deploy-hooks
+    command:
+      - "UNIX-LISTEN:/run/deploy-hooks/hooks.sock,fork,reuseaddr,unlink-early,mode=666,perm-late=666,umask=000"
+      - "TCP:127.0.0.1:9088"
 
 networks:
   slotify:
@@ -43,3 +59,4 @@ networks:
 volumes:
   caddy_data:
   caddy_config:
+  deploy_hooks_proxy:

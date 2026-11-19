@@ -12,7 +12,9 @@ load_gateway_env
 
 case "${MODE}" in
   prod)
-    compose_gateway up -d --remove-orphans gateway
+    # deploy-hooks-loopback must be listed: --remove-orphans would drop it
+    # if only `gateway` were named. Dev does not start the loopback.
+    compose_gateway up -d --remove-orphans gateway deploy-hooks-loopback
   ;;
   dev)
     compose_gateway_dev up -d --remove-orphans gateway

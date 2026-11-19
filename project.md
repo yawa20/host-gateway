@@ -47,10 +47,10 @@ Compose-проект: **`slotify-gateway`**, сервис **`gateway`** (обр�
 ## Сборка конфига Caddy
 
 1. **`Caddyfile.prod`** монтируется как `/etc/caddy/Caddyfile.base` — маршрутизация **YAKOSLOTS**.
-2. **`caddy-entrypoint.sh`** копирует base в `/tmp/Caddyfile` и при `SECONDARY_APP_DOMAIN` **дописывает** блоки apex + `*.{domain}` → `reverse_proxy` на upstream второго приложения.
+2. **`caddy-entrypoint.sh`** копирует base в `/tmp/Caddyfile`, при `SECONDARY_APP_DOMAIN` **дописывает** блоки apex + `*.{domain}` → `reverse_proxy` на upstream второго приложения, затем **всегда** дописывает сайт `deploy-hooks.internal.yakoslots.online`.
 3. Запуск: `caddy run --config /tmp/Caddyfile`.
 
-Правки маршрутизации YAKOSLOTS — в `Caddyfile.prod` + перезапуск gateway. Второе приложение — в `.env` + перезапуск (без правки base, если достаточно entrypoint).
+Правки маршрутизации YAKOSLOTS — в `Caddyfile.prod` + перезапуск gateway. Второе приложение — в `.env` + перезапуск (без правки base, если достаточно entrypoint). Deploy hooks — в entrypoint и сервисе `deploy-hooks-loopback`, без новой переменной `.env`.
 
 ## Маршрутизация YAKOSLOTS (без изменений при добавлении secondary)
 
@@ -90,9 +90,36 @@ Compose-проект: **`slotify-gateway`**, сервис **`gateway`** (обр�
 
 Пример compose для второго app: `yawa20/slotify` → `deploy/secondary-app.compose.example.yaml`. Операторская выжимка также в `slotify` → `docs/deploy.md` § «Second application».
 
+## Deploy hooks
+
+Не меняет таблицу YAKOSLOTS и блоки второго приложения. Отдельной переменной `.env` нет.
+
+| Запрос | Куда |
+|--------|------|
+| `https://deploy-hooks.internal.yakoslots.online` | loopback VPS `127.0.0.1:9088` (процесс на хосте, не контейнер) |
+
+Caddy в контейнере `gateway` сидит в сети `slotify`. `127.0.0.1` внутри этого контейнера — не VPS, и адрес моста Docker не подключается к сокету, слушающему только `127.0.0.1` хоста. Сервис **`deploy-hooks-loopback`** (`network_mode: host`, образ `alpine/socat:1.8.1.3`) слушает unix-сокет в томе `deploy_hooks_proxy` и копирует байты на `127.0.0.1:9088` хоста. TCP-порт наружу не публикует. `./scripts/up.sh` поднимает и `gateway`, и этот relay (`--remove-orphans` иначе удалит его).
+
+Прокси:
+
+- тело запроса стримится: `request_buffers` не задан, `lb_retries 0` (иначе Caddy буферизует тело ради повтора);
+- `flush_interval -1`, HTTP/1.1 до upstream, `compression off`;
+- заголовки не удаляются. Уходят все не-hop-by-hop, в том числе каждое имя с префиксом `webhook-`. Имена на проводе — каноническая форма Go (`Webhook-Id`).
+
+TLS — автоматический HTTPS, как у явных публичных хостов (`api.`, `admin.`): HTTP-01 и TLS-ALPN-01, email `ACME_EMAIL`. Это не `on_demand`.
+
+Имя `deploy-hooks.internal.yakoslots.online` лежит в публичной зоне `yakoslots.online`. Метка `internal` — не специальный TLD `.internal`, публичный CA имеет право выпустить сертификат. Выпуск состоится только если в публичном DNS есть A/AAAA на этот VPS (challenge должен дойти до Caddy). DNS-01 в этом gateway нет. Имя только во внутреннем DNS публичный сертификат не получит; остальные сайты при этом продолжают работать.
+
+Оператор:
+
+1. Слушатель webhook на VPS, bind **`127.0.0.1:9088`**.
+2. Публичная A/AAAA `deploy-hooks.internal.yakoslots.online` → этот VPS (иначе нет ни сертификата, ни внешнего доступа).
+3. `./scripts/up.sh`.
+
 ## TLS и тома
 
 - Тома `caddy_data`, `caddy_config` — в compose-проекте **slotify-gateway** (не в app-стеке).
+- Том `deploy_hooks_proxy` — только unix-сокет relay на `127.0.0.1:9088`. Сертификаты там не лежат.
 - После миграции gateway из in-repo Caddy первый старт может перевыпустить сертификаты.
 
 ## Миграция сети `slotify-prod_slotify`
@@ -105,6 +132,7 @@ Compose-проект: **`slotify-gateway`**, сервис **`gateway`** (обр�
 2. `YAKOSLOTS_DOMAIN` = `BASE_DOMAIN`; DNS для prod-домена YAKOSLOTS.
 3. Gateway `.env` заполнен; `./scripts/up.sh`.
 4. Опционально второй домен: secondary compose + `SECONDARY_APP_*` + DNS + перезапуск gateway.
+5. Deploy hooks: слушатель на `127.0.0.1:9088` хоста, публичный DNS на `deploy-hooks.internal.yakoslots.online`, `./scripts/up.sh` (вместе с relay). Новых ключей `.env` нет.
 
 ## Связанные артефакты
 
@@ -112,5 +140,5 @@ Compose-проект: **`slotify-gateway`**, сервис **`gateway`** (обр�
 |-----------------|------------|
 | `README.md` | Краткий runbook |
 | `yawa20/slotify` `docs/deploy.md` | VPS, DNS, second app |
-| `caddy-entrypoint.sh`, `.env.example` | Второе приложение: apex и `*.{domain}`, порт upstream по умолчанию 3030 |
+| `caddy-entrypoint.sh`, `.env.example` | Второе приложение: apex и `*.{domain}`, порт upstream по умолчанию 3030. Deploy hooks: фиксированный хост, без новой переменной |
 | Project store `internal/php-healthcheck.md` | Почему `php` должен быть healthy до зависимых сервисов |
