@@ -54,13 +54,22 @@ fi
 # into a buffer first. No header is deleted: reverse_proxy forwards every
 # non-hop-by-hop request header, including every name that starts with webhook-.
 # lb_retries 0 keeps Caddy from buffering the body for a replay.
-cat >>"${CFG}" <<'EOF'
+# When DEPLOY_WEBHOOK_SECRET is set, Caddy adds X-Deploy-Secret upstream
+# (home_units autodeploy either mode). Empty → omit header (unchanged behavior).
+if [ -n "${DEPLOY_WEBHOOK_SECRET}" ]; then
+	DEPLOY_HOOKS_SECRET_DIRECTIVE='		header_up X-Deploy-Secret {env.DEPLOY_WEBHOOK_SECRET}
+'
+else
+	DEPLOY_HOOKS_SECRET_DIRECTIVE=
+fi
+
+cat >>"${CFG}" <<EOF
 
 # deploy-hooks.internal.yakoslots.online → VPS loopback 127.0.0.1:9088
 deploy-hooks.internal.yakoslots.online {
 	reverse_proxy unix//run/deploy-hooks/hooks.sock {
 		header_up Host {http.request.host}
-		flush_interval -1
+${DEPLOY_HOOKS_SECRET_DIRECTIVE}		flush_interval -1
 		lb_retries 0
 		transport http {
 			versions 1.1
