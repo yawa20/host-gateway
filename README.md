@@ -8,7 +8,7 @@ Full specification: [`project.md`](project.md).
 
 | File | Purpose |
 |------|---------|
-| `docker-compose.yaml` | Production Caddy (`80` / `443` / `8080`) |
+| `docker-compose.yaml` | Production Caddy (`80` / `443` / `8080`) and the deploy-hooks loopback relay |
 | `docker-compose.dev.yaml` | Local dev HTTP gateway |
 | `Caddyfile.prod` | Production routing (`YAKOSLOTS_DOMAIN`); not edited for a second app |
 | `project.md` | Gateway specification |
@@ -104,3 +104,21 @@ SECONDARY_APP_UPSTREAM_PORT=3030
 ```
 
 The service must listen on `0.0.0.0:<port>` inside its container. Point DNS A/AAAA for the apex and `*.{apex}` at this VPS, then `./scripts/up.sh`.
+
+## Deploy hooks
+
+`deploy-hooks.internal.yakoslots.online` is appended by `caddy-entrypoint.sh`. `Caddyfile.prod` and the second-app blocks are unchanged. There is no `.env` key for this host.
+
+Caddy is on the `slotify` bridge, so `127.0.0.1` inside that container is not the VPS. `deploy-hooks-loopback` (`network_mode: host`, image `alpine/socat:1.8.1.3`) listens on a unix socket in the `deploy_hooks_proxy` volume and copies bytes to **`127.0.0.1:9088` on the VPS**. It does not publish a TCP port. The webhook listener must bind the host loopback, not an address inside a container.
+
+The proxy streams the request body (`request_buffers` is not set, `lb_retries` is 0) and does not delete request headers. Every non-hop-by-hop header is forwarded, including every name that starts with `webhook-`. Caddy's HTTP stack writes header names in canonical form (`Webhook-Id`).
+
+TLS is automatic HTTPS, the same path as `api.` and `admin.`: Let's Encrypt HTTP-01 and TLS-ALPN-01 with `ACME_EMAIL`. It is not on-demand TLS. The label `internal` is not the special-use `.internal` TLD, so a public CA may issue for this name **only when it has a public A/AAAA record aimed at this VPS**. This gateway has no DNS-01 provider. A name that exists only in private DNS cannot get a public certificate; other sites keep theirs.
+
+```bash
+# listener on the VPS, bound to loopback only
+# DNS: deploy-hooks.internal.yakoslots.online → this VPS
+./scripts/up.sh
+```
+
+`./scripts/up.sh dev` does not start the loopback relay.
