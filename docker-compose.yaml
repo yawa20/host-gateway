@@ -25,6 +25,8 @@ services:
       SECONDARY_APP_UPSTREAM_PORT: ${SECONDARY_APP_UPSTREAM_PORT:-3030}
       # Full host:port. When set, the entrypoint ignores HOST + PORT.
       SECONDARY_APP_UPSTREAM: ${SECONDARY_APP_UPSTREAM:-}
+      # Same value as /etc/home_units/deploy-webhook.env on the VPS (optional).
+      DEPLOY_WEBHOOK_SECRET: ${DEPLOY_WEBHOOK_SECRET:-}
     volumes:
       - ./Caddyfile.prod:/etc/caddy/Caddyfile.base:ro
       - ./Caddyfile.secondary.fragment:/etc/caddy/Caddyfile.secondary.fragment:ro

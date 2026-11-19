@@ -107,7 +107,9 @@ The service must listen on `0.0.0.0:<port>` inside its container. Point DNS A/AA
 
 ## Deploy hooks
 
-`deploy-hooks.internal.yakoslots.online` is appended by `caddy-entrypoint.sh`. `Caddyfile.prod` and the second-app blocks are unchanged. There is no `.env` key for this host.
+`deploy-hooks.internal.yakoslots.online` is appended by `caddy-entrypoint.sh`. `Caddyfile.prod` and the second-app blocks are unchanged.
+
+Optionally set `DEPLOY_WEBHOOK_SECRET` in `.env` (same value as `home_units` `/etc/home_units/deploy-webhook.env`) so Caddy injects `X-Deploy-Secret` on the reverse_proxy to the deploy-hooks upstream — required for home_units autodeploy **either** mode. Leave unset to omit the header.
 
 Caddy is on the `slotify` bridge, so `127.0.0.1` inside that container is not the VPS. `deploy-hooks-loopback` (`network_mode: host`, image `alpine/socat:1.8.1.3`) listens on a unix socket in the `deploy_hooks_proxy` volume and copies bytes to **`127.0.0.1:9088` on the VPS**. It does not publish a TCP port. The webhook listener must bind the host loopback, not an address inside a container.
 

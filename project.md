@@ -50,7 +50,7 @@ Compose-проект: **`slotify-gateway`**, сервис **`gateway`** (обр�
 2. **`caddy-entrypoint.sh`** копирует base в `/tmp/Caddyfile`, при `SECONDARY_APP_DOMAIN` **дописывает** блоки apex + `*.{domain}` → `reverse_proxy` на upstream второго приложения, затем **всегда** дописывает сайт `deploy-hooks.internal.yakoslots.online`.
 3. Запуск: `caddy run --config /tmp/Caddyfile`.
 
-Правки маршрутизации YAKOSLOTS — в `Caddyfile.prod` + перезапуск gateway. Второе приложение — в `.env` + перезапуск (без правки base, если достаточно entrypoint). Deploy hooks — в entrypoint и сервисе `deploy-hooks-loopback`, без новой переменной `.env`.
+Правки маршрутизации YAKOSLOTS — в `Caddyfile.prod` + перезапуск gateway. Второе приложение — в `.env` + перезапуск (без правки base, если достаточно entrypoint). Deploy hooks — в entrypoint и сервисе `deploy-hooks-loopback`; опционально `DEPLOY_WEBHOOK_SECRET` в `.env` (тот же секрет, что `/etc/home_units/deploy-webhook.env`) для `header_up X-Deploy-Secret`.
 
 ## Маршрутизация YAKOSLOTS (без изменений при добавлении secondary)
 
@@ -92,7 +92,7 @@ Compose-проект: **`slotify-gateway`**, сервис **`gateway`** (обр�
 
 ## Deploy hooks
 
-Не меняет таблицу YAKOSLOTS и блоки второго приложения. Отдельной переменной `.env` нет.
+Не меняет таблицу YAKOSLOTS и блоки второго приложения. Опционально `DEPLOY_WEBHOOK_SECRET` — home_units autodeploy **either** mode.
 
 | Запрос | Куда |
 |--------|------|
@@ -105,6 +105,7 @@ Caddy в контейнере `gateway` сидит в сети `slotify`. `127.0
 - тело запроса стримится: `request_buffers` не задан, `lb_retries 0` (иначе Caddy буферизует тело ради повтора);
 - `flush_interval -1`, HTTP/1.1 до upstream, `compression off`;
 - заголовки не удаляются. Уходят все не-hop-by-hop, в том числе каждое имя с префиксом `webhook-`. Имена на проводе — каноническая форма Go (`Webhook-Id`).
+- при заданном `DEPLOY_WEBHOOK_SECRET` — `header_up X-Deploy-Secret` на upstream (either mode home_units); пусто — строка не дописывается.
 
 TLS — автоматический HTTPS, как у явных публичных хостов (`api.`, `admin.`): HTTP-01 и TLS-ALPN-01, email `ACME_EMAIL`. Это не `on_demand`.
 
@@ -132,7 +133,7 @@ TLS — автоматический HTTPS, как у явных публичн�
 2. `YAKOSLOTS_DOMAIN` = `BASE_DOMAIN`; DNS для prod-домена YAKOSLOTS.
 3. Gateway `.env` заполнен; `./scripts/up.sh`.
 4. Опционально второй домен: secondary compose + `SECONDARY_APP_*` + DNS + перезапуск gateway.
-5. Deploy hooks: слушатель на `127.0.0.1:9088` хоста, публичный DNS на `deploy-hooks.internal.yakoslots.online`, `./scripts/up.sh` (вместе с relay). Новых ключей `.env` нет.
+5. Deploy hooks: слушатель на `127.0.0.1:9088` хоста, публичный DNS на `deploy-hooks.internal.yakoslots.online`, `./scripts/up.sh` (вместе с relay). При either-режиме autodeploy — `DEPLOY_WEBHOOK_SECRET` в `.env` gateway.
 
 ## Связанные артефакты
 
